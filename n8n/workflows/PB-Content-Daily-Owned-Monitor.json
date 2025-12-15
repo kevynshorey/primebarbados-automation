@@ -1,0 +1,200 @@
+{
+  "name": "PB-Content-Daily-Owned-Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 7,
+              "minute": 10
+            }
+          ]
+        }
+      },
+      "id": "cron",
+      "name": "Daily 07:10",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.primebarbados.com/",
+        "method": "GET",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "httpHome",
+      "name": "Fetch PrimeBarbados Home",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const html = $json.body || $json;\nconst re = /https?:\\/\\/primebarbados\\.com\\/property\\/[a-z0-9\\-]+\\//gi;\nconst matches = [...new Set((html.match(re) || []).map(x => x.toLowerCase()))];\nreturn matches.slice(0, 40).map(url => ({ json: { url, item_key: `pb_property:${url}` } }));"
+      },
+      "id": "fnExtract",
+      "name": "Extract Property Links",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into seen_items (source, item_key, payload) values ('primebarbados_home', '{{$json.item_key}}', {{JSON.stringify({url: $json.url})}}::jsonb) on conflict (item_key) do nothing returning id;"
+      },
+      "id": "pgSeen",
+      "name": "Insert Seen Item",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        920,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.id || 0}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "ifNew",
+      "name": "If New",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const url = $node[\"Extract Property Links\"].json.url;\nconst corr = `PBPROP-${Date.now()}-${Math.random().toString(16).slice(2,10)}`;\nconst payload = {\n  correlation_id: corr,\n  kind: \"social_post\",\n  channel: \"instagram\",\n  payload: {\n    caption: `New listing on Prime Barbados. View details: ${url}`,\n    link: url,\n    utm: {\n      utm_source: \"instagram\",\n      utm_medium: \"social\",\n      utm_campaign: \"pb-new-listings\",\n      utm_content: \"auto\"\n    },\n    assets: []\n  }\n};\nreturn [{ json: payload }];"
+      },
+      "id": "fnApproval",
+      "name": "Create Approval Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into approvals (correlation_id, kind, channel, payload, status) values ('{{$json.correlation_id}}', '{{$json.kind}}', '{{$json.channel}}', {{JSON.stringify($json.payload)}}::jsonb, 'pending');"
+      },
+      "id": "pgInsertApproval",
+      "name": "Insert Approval",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        420
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 07:10": {
+      "main": [
+        [
+          {
+            "node": "Fetch PrimeBarbados Home",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch PrimeBarbados Home": {
+      "main": [
+        [
+          {
+            "node": "Extract Property Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Property Links": {
+      "main": [
+        [
+          {
+            "node": "Insert Seen Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Seen Item": {
+      "main": [
+        [
+          {
+            "node": "If New",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If New": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Create Approval Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Approval Payload": {
+      "main": [
+        [
+          {
+            "node": "Insert Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false
+}

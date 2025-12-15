@@ -1,0 +1,44 @@
+OPERATOR CHECKLIST (NON-TECHNICAL)
+1) SUPABASE
+   a) Create project.
+   b) SQL Editor: paste supabase/schema.sql and run.
+   c) Storage: create bucket named media, set to private.
+
+2) GITHUB
+   a) Create repo named primebarbados-automation.
+   b) Upload everything inside this folder into the repo.
+
+3) VERCEL
+   a) Import the repo.
+   b) Framework: Next.js.
+   c) Root Directory: apps/web.
+   d) Add environment variables from .env.example.
+   e) Deploy.
+
+4) N8N
+   a) Use n8n cloud or a local n8n provider.
+   b) Add env vars:
+      - PUBLISHER_SHARED_SECRET (same value as Vercel)
+      - VERCEL_BASE_URL (your Vercel domain)
+   c) Import the workflows in n8n/workflows.
+   d) Update Postgres credential id in each workflow after import.
+   e) Enable workflows.
+
+5) CONNECT TOKENS
+   a) Instagram: obtain IG_USER_ID and long-lived token, paste into Vercel env vars.
+   b) X: create app, obtain refresh token, paste into Vercel env vars.
+   c) TikTok: create app, obtain access token, run TikTok uploader runner on the n8n server.
+
+6) IMPORT ADDITIONAL WORKFLOW
+   a) Import n8n/workflows/PB-Content-Daily-Owned-Monitor.json
+   b) Enable it after credentials are set.
+
+7) TWILIO WHATSAPP
+   a) Set TWILIO_WEBHOOK_PUBLIC_URL to your Vercel endpoint URL: https://YOURDOMAIN/api/leads/twilio
+   b) Set TWILIO_VERIFY_MODE=off for initial tests, then ask to enable full verification.
+
+8) ZOHO BOOKS CONTACTS
+   a) In n8n, create OAuth2 credentials for Zoho.
+   b) Set scopes for Zoho Books contacts write.
+   c) Set ZOHO_BOOKS_ORG_ID in n8n env vars.
+   d) Import and enable PB-Leads-ZohoBooks-ContactUpsert.json.

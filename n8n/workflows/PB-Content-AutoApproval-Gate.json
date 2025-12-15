@@ -1,0 +1,105 @@
+{
+  "name": "PB-Content-AutoApproval-Gate",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cron",
+      "name": "Cron Every 2 Minutes",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select * from approvals where status='pending' and kind in ('social_post','blog_post','zoho_contact_upsert','lead_follow_up','whatsapp_reply') order by created_at asc limit 50;"
+      },
+      "id": "pgFetch",
+      "name": "Fetch Pending Approvals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        480,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const out = [];\nfor (const item of $input.all()) {\n  const a = item.json;\n  const kind = a.kind;\n  const payload = a.payload || {};\n  const ruleHits = [];\n  let risk = 0;\n\n  // Hard blocks\n  const text = (payload.caption || payload.text || payload.title || '').toLowerCase();\n  const banned = ['guaranteed', 'guarantee', 'risk-free', 'limited time', 'discount', 'crypto'];\n  for (const b of banned) {\n    if (text.includes(b)) {\n      ruleHits.push({ rule: 'banned_term', term: b });\n      risk += 50;\n    }\n  }\n\n  // Link must include UTM if present\n  if (payload.link) {\n    const u = new URL(payload.link);\n    const qs = u.searchParams;\n    const required = ['utm_source','utm_medium','utm_campaign','utm_content'];\n    for (const r of required) {\n      if (!qs.get(r)) {\n        ruleHits.push({ rule: 'missing_utm', param: r });\n        risk += 20;\n      }\n    }\n  }\n\n  // Finance or outbound messaging always requires manual approval\n  const manualKinds = ['zoho_contact_upsert','lead_follow_up','whatsapp_reply'];\n  const forceManual = manualKinds.includes(kind);\n\n  const autoAllowed = (kind === 'social_post' || kind === 'blog_post') && risk < 40;\n\n  const nextStatus = (forceManual || !autoAllowed) ? 'pending' : 'approved';\n  out.push({ json: { id: a.id, correlation_id: a.correlation_id, nextStatus, risk_score: risk, rule_hits: ruleHits } });\n}\nreturn out;"
+      },
+      "id": "fnScore",
+      "name": "Risk Score",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        720,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update approvals set risk_score={{$json.risk_score}}, rule_hits={{JSON.stringify($json.rule_hits)}}::jsonb, status='{{$json.nextStatus}}', approved_by=case when '{{$json.nextStatus}}'='approved' then 'auto' else approved_by end, approved_at=case when '{{$json.nextStatus}}'='approved' then now() else approved_at end where id='{{$json.id}}'::uuid;"
+      },
+      "id": "pgUpdate",
+      "name": "Update Approval",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        960,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Every 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Pending Approvals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pending Approvals": {
+      "main": [
+        [
+          {
+            "node": "Risk Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Score": {
+      "main": [
+        [
+          {
+            "node": "Update Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false
+}

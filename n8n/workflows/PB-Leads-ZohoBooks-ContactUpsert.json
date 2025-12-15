@@ -1,0 +1,139 @@
+{
+  "name": "PB-Leads-ZohoBooks-ContactUpsert",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cron",
+      "name": "Cron Every 5 Minutes",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select * from approvals where status='approved' and kind='zoho_contact_upsert' and executed_at is null and (scheduled_for is null or scheduled_for <= now()) order by created_at asc limit 25;"
+      },
+      "id": "pgFetch",
+      "name": "Fetch Zoho Contact Approvals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        480,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "return $input.all().map(i => {\n  const a = i.json;\n  const p = a.payload || {};\n  const contact = {\n    contact_name: p.name || p.email || p.phone || \"Lead\",\n    email: p.email || undefined,\n    phone: p.phone || undefined,\n    contact_type: \"customer\",\n    notes: p.notes || \"Created via PB automation\"\n  };\n  return { json: { approval_id: a.id, correlation_id: a.correlation_id, contact } };\n});"
+      },
+      "id": "fnMap",
+      "name": "Map to Zoho Contact",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        710,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.ZOHO_BOOKS_API_BASE}}/books/v3/contacts?organization_id={{$env.ZOHO_BOOKS_ORG_ID}}",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{JSON.stringify({ contact_name: $json.contact.contact_name, email: $json.contact.email, phone: $json.contact.phone, contact_type: $json.contact.contact_type, notes: $json.contact.notes })}}"
+      },
+      "id": "httpZoho",
+      "name": "Create Contact in Zoho Books",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        940,
+        320
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "REPLACE_WITH_ZOHO_OAUTH2_CRED_ID",
+          "name": "Zoho OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update approvals set status='executed', executed_at=now(), result={{JSON.stringify($json)}} where id='{{$node[\"Map to Zoho Contact\"].json.approval_id}}'::uuid;"
+      },
+      "id": "pgMark",
+      "name": "Mark Executed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Zoho Contact Approvals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Zoho Contact Approvals": {
+      "main": [
+        [
+          {
+            "node": "Map to Zoho Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map to Zoho Contact": {
+      "main": [
+        [
+          {
+            "node": "Create Contact in Zoho Books",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Contact in Zoho Books": {
+      "main": [
+        [
+          {
+            "node": "Mark Executed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false
+}

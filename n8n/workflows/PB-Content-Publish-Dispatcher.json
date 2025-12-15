@@ -1,0 +1,267 @@
+{
+  "name": "PB-Content-Publish-Dispatcher",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cron",
+      "name": "Cron Every 3 Minutes",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select * from system_flags where key='publishing_kill_switch' limit 1;"
+      },
+      "id": "pgFlag",
+      "name": "Get Kill Switch",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        460,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.value.enabled}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "ifKill",
+      "name": "If Kill Switch Enabled",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select * from approvals where status='approved' and executed_at is null and kind in ('social_post','blog_post') and (scheduled_for is null or scheduled_for <= now()) order by created_at asc limit 25;"
+      },
+      "id": "pgFetch",
+      "name": "Fetch Approved Content",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        900,
+        420
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "return $input.all().map(i => {\n  const a = i.json;\n  const channel = a.channel;\n  const payload = a.payload || {};\n  const corr = a.correlation_id;\n  return { json: { approval_id: a.id, correlation_id: corr, channel, payload } };\n});"
+      },
+      "id": "fnMap",
+      "name": "Map Publish Job",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.VERCEL_BASE_URL}}/api/publish/x",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{JSON.stringify({ text: $json.payload.text || $json.payload.caption })}}",
+        "headerParametersJson": "={{JSON.stringify({ 'x-signature': $env.PUBLISHER_SHARED_SECRET ? require('crypto').createHmac('sha256',$env.PUBLISHER_SHARED_SECRET).update(JSON.stringify({ text: $json.payload.text || $json.payload.caption })).digest('hex') : '' })}}"
+      },
+      "id": "httpX",
+      "name": "Publish X",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1340,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.VERCEL_BASE_URL}}/api/publish/instagram",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{JSON.stringify({ image_url: $json.payload.image_url, caption: $json.payload.caption })}}"
+      },
+      "id": "httpIG",
+      "name": "Publish Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1340,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.VERCEL_BASE_URL}}/api/publish/blog",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{JSON.stringify($json.payload)}}"
+      },
+      "id": "httpBlog",
+      "name": "Publish Blog PR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1340,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update approvals set status='executed', executed_at=now(), result={{JSON.stringify($json)}}::jsonb where id='{{$node[\"Map Publish Job\"].json.approval_id}}'::uuid;"
+      },
+      "id": "pgMark",
+      "name": "Mark Approval Executed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        420
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CRED_ID",
+          "name": "Supabase Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Every 3 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Kill Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Kill Switch": {
+      "main": [
+        [
+          {
+            "node": "If Kill Switch Enabled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Kill Switch Enabled": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Fetch Approved Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Approved Content": {
+      "main": [
+        [
+          {
+            "node": "Map Publish Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Publish Job": {
+      "main": [
+        [
+          {
+            "node": "Publish X",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Publish Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Publish Blog PR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish X": {
+      "main": [
+        [
+          {
+            "node": "Mark Approval Executed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Instagram": {
+      "main": [
+        [
+          {
+            "node": "Mark Approval Executed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Blog PR": {
+      "main": [
+        [
+          {
+            "node": "Mark Approval Executed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false
+}
