@@ -1,6 +1,5 @@
 import { supabase } from "../../../../lib/supabase";
-import { verifySignature, makeCorrelationId } from "../../../../lib/signing";
-
+import { makeCorrelationId } from "../../../../lib/signing";
 export async function POST(req: Request) {
   const raw = await req.text();
   const sig = req.headers.get("x-signature");
