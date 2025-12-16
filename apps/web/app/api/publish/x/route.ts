@@ -1,4 +1,4 @@
-import { verifySignature } from "@/lib/signing";
+import { verifySignature, makeCorrelationId } from "../../../../lib/signing";
 
 async function getAccessToken() {
   const clientId = process.env.X_CLIENT_ID as string;
