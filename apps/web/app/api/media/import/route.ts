@@ -1,6 +1,5 @@
 import { supabase } from "../../../../lib/supabase";
-import { verifySignature, makeCorrelationId, sha256 } from "../../../../lib/signing";
-
+import { verifySignature, makeCorrelationId } from "../../../../lib/signing";
 const allow = (process.env.PRIMEBARBADOS_ALLOWLIST || "")
   .split(",")
   .map(s => s.trim())
