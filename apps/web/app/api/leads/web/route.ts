@@ -1,5 +1,5 @@
-import { supabase } from "@/lib/supabase";
-import { verifySignature, makeCorrelationId } from "@/lib/signing";
+import { supabase } "../../../../lib/supabase";
+import { verifySignature, makeCorrelationId } "../../../../lib/supabase";
 
 export async function POST(req: Request) {
   const raw = await req.text();
