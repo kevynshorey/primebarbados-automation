@@ -1,4 +1,4 @@
-import { verifySignature } from "@/lib/signing";
+import { verifySignature, makeCorrelationId } from "../../../../lib/signing";
 
 export async function POST(req: Request) {
   const raw = await req.text();
