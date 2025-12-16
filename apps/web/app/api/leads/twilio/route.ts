@@ -1,5 +1,5 @@
-import { supabase } from "@/lib/supabase";
-import { makeCorrelationId } from "@/lib/signing";
+import { supabase } from "../../../../lib/supabase";
+import { makeCorrelationId } from "../../../../lib/supabase";
 
 function verifyTwilio() {
   if (process.env.TWILIO_VERIFY_MODE === "off") return true;
